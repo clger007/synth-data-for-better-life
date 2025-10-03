@@ -1,28 +1,40 @@
 import pandas as pd
 import numpy as np
+import re
 
-def detect_and_convert_dates(df):
-    """
-    Detects columns with date information in a DataFrame, including:
-    - Columns already of datetime type
-    - Columns with string dates (e.g., '2020-10-10', '2020-OCT-10', '2020AUG12')
-    Converts string date columns to datetime.
-    Returns a new DataFrame with converted columns.
-    """
+def detect_and_convert_dates(df: pd.DataFrame, return_cols=False) -> list:
+    date_cols = []
+    date_patterns = [
+        r'^^\d{4}-\d{1,2}-\d{1,2}$',  # YYYY-MM-DD
+        r'^^\d{1,2}/\d{1,2}/\d{4}$',  # MM/DD/YYYY
+        r'^^\d{1,2}-\w{3}-\d{4}$',    # DD-MMM-YYYY
+        r'^^\d{1,2}\.\d{1,2}\.\d{4}$' # DD.MM.YYYY
+    ]
+    
     df = df.copy()
     for col in df.columns:
-        # If column is datetime, continue
         if pd.api.types.is_datetime64_any_dtype(df[col]):
+            print(f'detected date format 👍: {col}')
+            date_cols.append(col)
             continue
-        # If column is string/object, check if it looks like dates
+
         if pd.api.types.is_object_dtype(df[col]):
-            sample = df[col].dropna().astype(str).head(10)
-            date_like = sample.apply(
-                lambda x: pd.to_datetime(x, errors='coerce', infer_datetime_format=True)
-            )
-            # If at least half of sample can be parsed as date, convert entire column
-            if date_like.notna().sum() >= len(sample) // 2:
-                df[col] = pd.to_datetime(df[col], errors='coerce', infer_datetime_format=True)
+            sample = df[col].dropna().astype(str).head(5)
+            if not sample.empty:
+                # Check if any sample value matches a date pattern
+                is_date_like = any(
+                    any(re.match(pattern, x) for pattern in date_patterns)
+                    for x in sample
+                )
+                if is_date_like:
+                    converted = pd.to_datetime(df[col], errors='coerce', infer_datetime_format=True)
+                    if converted.notna().sum() >= len(df[col].dropna()) // 2:
+                        print(f'Converted str_date to date format 👍: {col}')
+                        df[col] = converted
+                        date_cols.append(col)
+    
+    if return_cols:
+        return df, date_cols
     return df
 
 def date_to_numeric(dt, unit='days'):
@@ -42,4 +54,4 @@ def numeric_to_date(nums, unit='days'):
     Converts numeric values (e.g., days since epoch) to datetime.
     unit: 'days', 'seconds', etc.
     """
-    return pd.Timestamp("1970-01-01") + pd.to_timedelta(nums, unit=unit)
+    return pd.Timestamp("1970-01-01") + pd.to_timedelta(nums, unit=unit).
